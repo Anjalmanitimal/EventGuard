@@ -4,6 +4,28 @@ const User = require('../models/User');
 const { hashPassword, comparePassword } = require('../utils/password');
 const { signAccessToken } = require('../utils/jwt');
 const { isValidEmail, isValidPassword } = require('../utils/validators');
+const {
+  issueRefreshToken,
+  rotateRefreshToken,
+  revokeRefreshToken,
+  REFRESH_TOKEN_TTL_DAYS,
+} = require('../utils/refreshToken');
+
+const REFRESH_COOKIE_NAME = 'refreshToken';
+const REFRESH_COOKIE_OPTS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'strict',
+  path: '/api/auth',
+  maxAge: REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000,
+};
+
+async function issueSession(res, user) {
+  const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
+  const refreshToken = await issueRefreshToken(user._id);
+  res.cookie(REFRESH_COOKIE_NAME, refreshToken, REFRESH_COOKIE_OPTS);
+  return accessToken;
+}
 
 async function register(req, res) {
   const { email, password } = req.body;
@@ -77,9 +99,56 @@ async function login(req, res) {
     return res.status(403).json({ error: 'Email not verified' });
   }
 
+  const accessToken = await issueSession(res, user);
+
+  return res.json({ accessToken });
+}
+
+async function refresh(req, res) {
+  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (!rawToken) {
+    return res.status(401).json({ error: 'Refresh token required' });
+  }
+
+  const rotated = await rotateRefreshToken(rawToken);
+  if (!rotated) {
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_OPTS.path });
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+
+  const user = await User.findById(rotated.userId);
+  if (!user) {
+    res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_OPTS.path });
+    return res.status(401).json({ error: 'Invalid or expired refresh token' });
+  }
+
+  res.cookie(REFRESH_COOKIE_NAME, rotated.token, REFRESH_COOKIE_OPTS);
   const accessToken = signAccessToken({ sub: user._id.toString(), role: user.role });
 
   return res.json({ accessToken });
 }
 
-module.exports = { register, verifyEmail, login };
+async function logout(req, res) {
+  const rawToken = req.cookies?.[REFRESH_COOKIE_NAME];
+  if (rawToken) {
+    await revokeRefreshToken(rawToken);
+  }
+  res.clearCookie(REFRESH_COOKIE_NAME, { path: REFRESH_COOKIE_OPTS.path });
+  return res.status(204).send();
+}
+
+async function me(req, res) {
+  const user = await User.findById(req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  return res.json({
+    id: user._id,
+    email: user.email,
+    role: user.role,
+    isEmailVerified: user.isEmailVerified,
+  });
+}
+
+module.exports = { register, verifyEmail, login, refresh, logout, me };
