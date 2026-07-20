@@ -1,0 +1,40 @@
+"use client";
+
+import Link from "next/link";
+import { useAuth } from "@/lib/auth-context";
+import { buttonClasses } from "@/components/ui/Button";
+
+export default function AuthStatus() {
+  const { user, loading, logout } = useAuth();
+
+  if (loading) {
+    return <div className="h-9 w-40 animate-pulse rounded-control bg-border/60" />;
+  }
+
+  if (user) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-muted">
+          {user.email}
+          <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">
+            {user.role}
+          </span>
+        </span>
+        <button onClick={() => logout()} className={buttonClasses("secondary")}>
+          Log out
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-3">
+      <Link href="/login" className="text-sm font-medium text-foreground hover:text-brand">
+        Log in
+      </Link>
+      <Link href="/register" className={buttonClasses("primary")}>
+        Register
+      </Link>
+    </div>
+  );
+}
