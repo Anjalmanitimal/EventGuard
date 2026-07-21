@@ -2,16 +2,22 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
-import { Mail, Lock, MailCheck } from "lucide-react";
-import { register } from "@/lib/api";
+import { Mail, Lock, MailCheck, User, Megaphone } from "lucide-react";
+import { register, type SignupRole } from "@/lib/api";
 import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 
+const ROLES: { value: SignupRole; label: string; description: string; icon: typeof User }[] = [
+  { value: "attendee", label: "Attendee", description: "Buy tickets to events", icon: User },
+  { value: "organizer", label: "Organizer", description: "Create and manage events", icon: Megaphone },
+];
+
 export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [role, setRole] = useState<SignupRole>("attendee");
   const [status, setStatus] = useState<"idle" | "submitting" | "done" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
 
@@ -20,7 +26,7 @@ export default function RegisterPage() {
     setStatus("submitting");
     setError(null);
     try {
-      await register(email, password);
+      await register(email, password, role);
       setStatus("done");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Registration failed");
@@ -50,6 +56,31 @@ export default function RegisterPage() {
         <h1 className="text-xl font-semibold text-foreground">Create your account</h1>
         <p className="mt-1 text-sm text-muted">Register to start buying or organizing events.</p>
         <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-sm font-medium text-foreground">I want to</span>
+            <div className="grid grid-cols-2 gap-3">
+              {ROLES.map(({ value, label, description, icon: Icon }) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setRole(value)}
+                  aria-pressed={role === value}
+                  className={`flex flex-col items-start gap-1 rounded-control border px-3 py-3 text-left transition-colors ${
+                    role === value
+                      ? "border-brand bg-brand/5"
+                      : "border-border hover:bg-border/20"
+                  }`}
+                >
+                  <Icon
+                    className={`size-4 ${role === value ? "text-brand" : "text-muted"}`}
+                    aria-hidden="true"
+                  />
+                  <span className="text-sm font-medium text-foreground">{label}</span>
+                  <span className="text-xs text-muted">{description}</span>
+                </button>
+              ))}
+            </div>
+          </div>
           <Input
             type="email"
             name="email"
