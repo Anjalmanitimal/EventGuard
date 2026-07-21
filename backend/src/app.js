@@ -6,6 +6,7 @@ const sanitizeBody = require('./middleware/sanitize');
 
 const healthRoutes = require('./routes/health.routes');
 const authRoutes = require('./routes/auth.routes');
+const eventsRoutes = require('./routes/events.routes');
 
 const app = express();
 
@@ -17,6 +18,7 @@ app.use(morgan('dev'));
 
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/events', eventsRoutes);
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
