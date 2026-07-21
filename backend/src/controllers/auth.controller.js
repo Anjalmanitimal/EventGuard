@@ -2,7 +2,7 @@ const crypto = require('crypto');
 
 const User = require('../models/User');
 const { hashPassword, comparePassword } = require('../utils/password');
-const { signAccessToken } = require('../utils/jwt');
+const { signAccessToken, signMfaChallengeToken, verifyMfaChallengeToken } = require('../utils/jwt');
 const { isValidEmail, isValidPassword } = require('../utils/validators');
 const {
   issueRefreshToken,
@@ -10,6 +10,8 @@ const {
   revokeRefreshToken,
   REFRESH_TOKEN_TTL_DAYS,
 } = require('../utils/refreshToken');
+const { recordAudit } = require('../middleware/auditLogger');
+const { generateSecret, getOtpauthUrl, verifyTotpCode } = require('../services/mfa.service');
 
 const REFRESH_COOKIE_NAME = 'refreshToken';
 const REFRESH_COOKIE_OPTS = {
@@ -60,6 +62,8 @@ async function register(req, res) {
   // No email provider wired up yet - log the token instead of sending a real email.
   console.log(`[email-verify] token for ${user.email}: ${emailVerificationToken}`);
 
+  await recordAudit(req, 'user.register', { userId: user._id, targetId: user._id });
+
   return res.status(201).json({
     id: user._id,
     email: user.email,
@@ -86,6 +90,9 @@ async function verifyEmail(req, res) {
   return res.json({ message: 'Email verified' });
 }
 
+const MAX_FAILED_LOGIN_ATTEMPTS = 10;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+
 async function login(req, res) {
   const { email, password } = req.body;
 
@@ -93,13 +100,31 @@ async function login(req, res) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
 
-  const user = await User.findOne({ email: email.toLowerCase() }).select('+passwordHash');
+  const user = await User.findOne({ email: email.toLowerCase() }).select(
+    '+passwordHash +failedLoginAttempts +lockoutUntil'
+  );
   if (!user) {
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
+  if (user.lockoutUntil && user.lockoutUntil > new Date()) {
+    await recordAudit(req, 'user.login_blocked_locked', { userId: user._id, targetId: user._id });
+    return res.status(423).json({
+      error: 'Account temporarily locked due to repeated failed logins. Try again later.',
+      lockedUntil: user.lockoutUntil,
+    });
+  }
+
   const valid = await comparePassword(password, user.passwordHash);
   if (!valid) {
+    user.failedLoginAttempts += 1;
+    if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
+      user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+      user.failedLoginAttempts = 0;
+      await recordAudit(req, 'user.login_locked', { userId: user._id, targetId: user._id });
+    }
+    await user.save();
+    await recordAudit(req, 'user.login_failed', { userId: user._id, targetId: user._id });
     return res.status(401).json({ error: 'Invalid credentials' });
   }
 
@@ -107,9 +132,108 @@ async function login(req, res) {
     return res.status(403).json({ error: 'Email not verified' });
   }
 
+  user.failedLoginAttempts = 0;
+  user.lockoutUntil = null;
+  await user.save();
+
+  if (user.mfaEnabled) {
+    await recordAudit(req, 'user.login_mfa_challenge', { userId: user._id, targetId: user._id });
+    const mfaToken = signMfaChallengeToken(user._id.toString());
+    return res.json({ mfaRequired: true, mfaToken });
+  }
+
+  await recordAudit(req, 'user.login_success', { userId: user._id, targetId: user._id });
+
+  const accessToken = await issueSession(res, user);
+
+  return res.json({ mfaRequired: false, accessToken });
+}
+
+async function mfaVerifyLogin(req, res) {
+  const { mfaToken, code } = req.body;
+
+  if (typeof mfaToken !== 'string' || typeof code !== 'string') {
+    return res.status(400).json({ error: 'mfaToken and code are required' });
+  }
+
+  let payload;
+  try {
+    payload = verifyMfaChallengeToken(mfaToken);
+  } catch {
+    return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
+  }
+
+  const user = await User.findById(payload.sub).select('+mfaSecret');
+  if (!user || !user.mfaEnabled || !user.mfaSecret) {
+    return res.status(401).json({ error: 'Invalid or expired MFA challenge' });
+  }
+
+  if (!verifyTotpCode(code, user.mfaSecret)) {
+    await recordAudit(req, 'user.login_mfa_failed', { userId: user._id, targetId: user._id });
+    return res.status(401).json({ error: 'Invalid authentication code' });
+  }
+
+  await recordAudit(req, 'user.login_success', { userId: user._id, targetId: user._id });
+
   const accessToken = await issueSession(res, user);
 
   return res.json({ accessToken });
+}
+
+async function mfaSetup(req, res) {
+  const user = await User.findById(req.user.id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  if (user.mfaEnabled) {
+    return res.status(400).json({ error: 'MFA is already enabled' });
+  }
+
+  const secret = generateSecret();
+  user.mfaSecret = secret;
+  await user.save();
+
+  return res.json({ secret, otpauthUrl: getOtpauthUrl(user.email, secret) });
+}
+
+async function mfaEnable(req, res) {
+  const { code } = req.body;
+
+  const user = await User.findById(req.user.id).select('+mfaSecret');
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  if (!user.mfaSecret) {
+    return res.status(400).json({ error: 'Call mfa/setup first to generate a secret' });
+  }
+  if (!verifyTotpCode(code, user.mfaSecret)) {
+    return res.status(400).json({ error: 'Invalid authentication code' });
+  }
+
+  user.mfaEnabled = true;
+  await user.save();
+  await recordAudit(req, 'user.mfa_enabled', { targetId: user._id });
+
+  return res.json({ message: 'MFA enabled' });
+}
+
+async function mfaDisable(req, res) {
+  const { password } = req.body;
+
+  const user = await User.findById(req.user.id).select('+passwordHash');
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  if (typeof password !== 'string' || !(await comparePassword(password, user.passwordHash))) {
+    return res.status(401).json({ error: 'Invalid password' });
+  }
+
+  user.mfaEnabled = false;
+  user.mfaSecret = null;
+  await user.save();
+  await recordAudit(req, 'user.mfa_disabled', { targetId: user._id });
+
+  return res.json({ message: 'MFA disabled' });
 }
 
 async function refresh(req, res) {
@@ -156,7 +280,19 @@ async function me(req, res) {
     email: user.email,
     role: user.role,
     isEmailVerified: user.isEmailVerified,
+    mfaEnabled: user.mfaEnabled,
   });
 }
 
-module.exports = { register, verifyEmail, login, refresh, logout, me };
+module.exports = {
+  register,
+  verifyEmail,
+  login,
+  mfaVerifyLogin,
+  mfaSetup,
+  mfaEnable,
+  mfaDisable,
+  refresh,
+  logout,
+  me,
+};
