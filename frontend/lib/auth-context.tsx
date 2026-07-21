@@ -9,14 +9,16 @@ import {
   type ReactNode,
 } from "react";
 import * as api from "./api";
-import type { User } from "./api";
+import type { LoginResult, User } from "./api";
 
 type AuthContextValue = {
   user: User | null;
   accessToken: string | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -47,8 +49,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadUser]);
 
   const login = useCallback(
-    async (email: string, password: string) => {
-      const { accessToken: token } = await api.login(email, password);
+    async (email: string, password: string): Promise<LoginResult> => {
+      const result = await api.login(email, password);
+      if (!result.mfaRequired) {
+        setAccessToken(result.accessToken);
+        await loadUser(result.accessToken);
+      }
+      return result;
+    },
+    [loadUser]
+  );
+
+  const completeMfaLogin = useCallback(
+    async (mfaToken: string, code: string) => {
+      const { accessToken: token } = await api.verifyMfaLogin(mfaToken, code);
       setAccessToken(token);
       await loadUser(token);
     },
@@ -61,8 +75,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
+  const refreshUser = useCallback(async () => {
+    if (accessToken) {
+      await loadUser(accessToken);
+    }
+  }, [accessToken, loadUser]);
+
   return (
-    <AuthContext.Provider value={{ user, accessToken, loading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, accessToken, loading, login, completeMfaLogin, logout, refreshUser }}
+    >
       {children}
     </AuthContext.Provider>
   );
