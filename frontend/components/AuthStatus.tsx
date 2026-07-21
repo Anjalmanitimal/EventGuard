@@ -12,8 +12,14 @@ export default function AuthStatus() {
   }
 
   if (user) {
+    const canManageEvents = user.role === "organizer" || user.role === "admin";
     return (
       <div className="flex items-center gap-3">
+        {canManageEvents && (
+          <Link href="/dashboard/organizer" className="text-sm font-medium text-foreground hover:text-brand">
+            My events
+          </Link>
+        )}
         <span className="text-sm text-muted">
           {user.email}
           <span className="ml-2 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand">

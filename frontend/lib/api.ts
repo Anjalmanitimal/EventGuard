@@ -28,10 +28,12 @@ export type User = {
   isEmailVerified: boolean;
 };
 
-export function register(email: string, password: string) {
+export type SignupRole = "attendee" | "organizer";
+
+export function register(email: string, password: string, role: SignupRole) {
   return request<{ id: string; email: string; role: string }>("/api/auth/register", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email, password, role }),
   });
 }
 
@@ -60,5 +62,79 @@ export function logout() {
 export function me(accessToken: string) {
   return request<User>("/api/auth/me", {
     headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export type EventStatus = "draft" | "published" | "cancelled";
+
+export type EventRecord = {
+  _id: string;
+  organizerId: string;
+  title: string;
+  description: string;
+  venue: string;
+  date: string;
+  status: EventStatus;
+};
+
+export type TicketTierRecord = {
+  _id: string;
+  eventId: string;
+  name: string;
+  price: number;
+  quantityTotal: number;
+  quantityAvailable: number;
+};
+
+export type NewEventInput = {
+  title: string;
+  description?: string;
+  venue: string;
+  date: string;
+  tier?: { name: string; price: number; quantityTotal: number };
+};
+
+function authHeader(accessToken: string) {
+  return { Authorization: `Bearer ${accessToken}` };
+}
+
+export function listEvents() {
+  return request<EventRecord[]>("/api/events", { cache: "no-store" });
+}
+
+export function listMyEvents(accessToken: string) {
+  return request<EventRecord[]>("/api/events/mine", {
+    headers: authHeader(accessToken),
+    cache: "no-store",
+  });
+}
+
+export function getEvent(id: string, accessToken?: string) {
+  return request<{ event: EventRecord; tiers: TicketTierRecord[] }>(`/api/events/${id}`, {
+    headers: accessToken ? authHeader(accessToken) : undefined,
+    cache: "no-store",
+  });
+}
+
+export function createEvent(accessToken: string, input: NewEventInput) {
+  return request<{ event: EventRecord; tier: TicketTierRecord | null }>("/api/events", {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateEvent(accessToken: string, id: string, patch: Partial<NewEventInput> & { status?: EventStatus }) {
+  return request<EventRecord>(`/api/events/${id}`, {
+    method: "PATCH",
+    headers: authHeader(accessToken),
+    body: JSON.stringify(patch),
+  });
+}
+
+export function deleteEvent(accessToken: string, id: string) {
+  return request<void>(`/api/events/${id}`, {
+    method: "DELETE",
+    headers: authHeader(accessToken),
   });
 }
