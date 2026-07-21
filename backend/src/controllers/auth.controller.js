@@ -27,11 +27,18 @@ async function issueSession(res, user) {
   return accessToken;
 }
 
+// staff/admin are never self-assignable - only granted by an admin later.
+const SELF_SIGNUP_ROLES = ['attendee', 'organizer'];
+
 async function register(req, res) {
-  const { email, password } = req.body;
+  const { email, password, role } = req.body;
 
   if (!isValidEmail(email) || !isValidPassword(password)) {
     return res.status(400).json({ error: 'Valid email and password (min 8 characters) are required' });
+  }
+
+  if (role !== undefined && !SELF_SIGNUP_ROLES.includes(role)) {
+    return res.status(400).json({ error: `role must be one of: ${SELF_SIGNUP_ROLES.join(', ')}` });
   }
 
   const normalizedEmail = email.toLowerCase();
@@ -47,6 +54,7 @@ async function register(req, res) {
     email: normalizedEmail,
     passwordHash,
     emailVerificationToken,
+    role: role || 'attendee',
   });
 
   // No email provider wired up yet - log the token instead of sending a real email.
