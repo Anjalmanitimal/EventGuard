@@ -1,6 +1,6 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
-type ApiErrorBody = { error?: string };
+type ApiErrorBody = { error?: string; remainingAttempts?: number };
 
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
@@ -12,10 +12,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
-  const body = await res.json().catch(() => ({}));
+  const body = (await res.json().catch(() => ({}))) as ApiErrorBody;
 
   if (!res.ok) {
-    throw new Error((body as ApiErrorBody).error || `Request failed with status ${res.status}`);
+    const base = body.error || `Request failed with status ${res.status}`;
+    const message =
+      typeof body.remainingAttempts === "number"
+        ? `${base} (${body.remainingAttempts} attempt${body.remainingAttempts === 1 ? "" : "s"} remaining)`
+        : base;
+    throw new Error(message);
   }
 
   return body as T;

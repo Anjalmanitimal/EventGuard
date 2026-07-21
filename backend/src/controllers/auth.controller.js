@@ -90,7 +90,7 @@ async function verifyEmail(req, res) {
   return res.json({ message: 'Email verified' });
 }
 
-const MAX_FAILED_LOGIN_ATTEMPTS = 10;
+const MAX_FAILED_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
 
 async function login(req, res) {
@@ -118,14 +118,24 @@ async function login(req, res) {
   const valid = await comparePassword(password, user.passwordHash);
   if (!valid) {
     user.failedLoginAttempts += 1;
+
     if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
       user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
       user.failedLoginAttempts = 0;
+      await user.save();
       await recordAudit(req, 'user.login_locked', { userId: user._id, targetId: user._id });
+      return res.status(423).json({
+        error: 'Account temporarily locked due to repeated failed logins. Try again later.',
+        lockedUntil: user.lockoutUntil,
+      });
     }
+
     await user.save();
     await recordAudit(req, 'user.login_failed', { userId: user._id, targetId: user._id });
-    return res.status(401).json({ error: 'Invalid credentials' });
+    return res.status(401).json({
+      error: 'Invalid credentials',
+      remainingAttempts: MAX_FAILED_LOGIN_ATTEMPTS - user.failedLoginAttempts,
+    });
   }
 
   if (!user.isEmailVerified) {
