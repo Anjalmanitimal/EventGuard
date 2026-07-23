@@ -31,6 +31,10 @@ const eventSchema = new mongoose.Schema(
       enum: ['draft', 'published', 'cancelled'],
       default: 'draft',
     },
+    reminderSentAt: {
+      type: Date,
+      default: null,
+    },
   },
   { timestamps: true }
 );
