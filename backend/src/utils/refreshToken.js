@@ -8,17 +8,23 @@ function hashToken(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-async function issueRefreshToken(userId) {
+async function issueRefreshToken(userId, userAgent = '') {
   const token = crypto.randomBytes(40).toString('hex');
   const expiresAt = new Date(Date.now() + REFRESH_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000);
-  await RefreshToken.create({ userId, tokenHash: hashToken(token), expiresAt });
+  await RefreshToken.create({ userId, tokenHash: hashToken(token), expiresAt, userAgent });
   return token;
 }
 
 // Rotates a refresh token: the presented token is consumed and a new one issued.
 // If a token that was already rotated gets presented again, that's a sign of theft
 // (someone replayed a stolen token) - revoke every active token for that user.
-async function rotateRefreshToken(rawToken) {
+//
+// Also binds the token to the User-Agent it was issued to. A refresh call
+// from a materially different client is treated the same way as replay -
+// this is a coarse signal (browser updates/extensions can change the UA
+// string, so it's not foolproof) but raises the bar for a stolen cookie
+// being used from an attacker's own browser.
+async function rotateRefreshToken(rawToken, userAgent = '') {
   const tokenHash = hashToken(rawToken);
   const existing = await RefreshToken.findOne({ tokenHash });
 
@@ -34,10 +40,18 @@ async function rotateRefreshToken(rawToken) {
     return null;
   }
 
+  if (existing.userAgent && userAgent && existing.userAgent !== userAgent) {
+    await RefreshToken.updateMany(
+      { userId: existing.userId, revokedAt: null },
+      { revokedAt: new Date() }
+    );
+    return { deviceMismatch: true };
+  }
+
   existing.revokedAt = new Date();
   await existing.save();
 
-  const token = await issueRefreshToken(existing.userId);
+  const token = await issueRefreshToken(existing.userId, userAgent);
   return { userId: existing.userId, token };
 }
 
@@ -45,9 +59,17 @@ async function revokeRefreshToken(rawToken) {
   await RefreshToken.updateOne({ tokenHash: hashToken(rawToken) }, { revokedAt: new Date() });
 }
 
+// Used when a password changes - every other session (device/browser) should
+// be forced to log in again, since the old credential could have been the
+// one compromised.
+async function revokeAllRefreshTokensForUser(userId) {
+  await RefreshToken.updateMany({ userId, revokedAt: null }, { revokedAt: new Date() });
+}
+
 module.exports = {
   issueRefreshToken,
   rotateRefreshToken,
   revokeRefreshToken,
+  revokeAllRefreshTokensForUser,
   REFRESH_TOKEN_TTL_DAYS,
 };

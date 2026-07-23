@@ -9,14 +9,29 @@ const userSchema = new mongoose.Schema(
       lowercase: true,
       trim: true,
     },
+    name: {
+      type: String,
+      default: '',
+      trim: true,
+    },
     passwordHash: {
       type: String,
       required: true,
       select: false,
     },
+    passwordChangedAt: {
+      type: Date,
+      default: Date.now,
+      select: false,
+    },
+    passwordHistory: {
+      type: [String],
+      default: [],
+      select: false,
+    },
     role: {
       type: String,
-      enum: ['attendee', 'organizer', 'staff', 'admin'],
+      enum: ['attendee', 'organizer', 'admin'],
       default: 'attendee',
     },
     isEmailVerified: {

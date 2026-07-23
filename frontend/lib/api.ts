@@ -29,9 +29,11 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 export type User = {
   id: string;
   email: string;
+  name: string;
   role: string;
   isEmailVerified: boolean;
   mfaEnabled: boolean;
+  passwordExpired: boolean;
 };
 
 export type SignupRole = "attendee" | "organizer";
@@ -102,6 +104,28 @@ export function logout() {
 export function me(accessToken: string) {
   return request<User>("/api/auth/me", {
     headers: { Authorization: `Bearer ${accessToken}` },
+  });
+}
+
+export function updateProfile(accessToken: string, name: string) {
+  return request<{ id: string; email: string; name: string; role: string }>("/api/auth/me", {
+    method: "PATCH",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function changePassword(accessToken: string, currentPassword: string, newPassword: string) {
+  return request<{ message: string; accessToken: string }>("/api/auth/change-password", {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ currentPassword, newPassword }),
+  });
+}
+
+export function exportMyData(accessToken: string) {
+  return request<Record<string, unknown>>("/api/auth/me/export", {
+    headers: authHeader(accessToken),
   });
 }
 
@@ -271,5 +295,62 @@ export function getAuditLogs(accessToken: string, limit = 50) {
   return request<{ logs: AuditLogEntry[]; total: number }>(`/api/admin/audit-logs?limit=${limit}`, {
     headers: authHeader(accessToken),
     cache: "no-store",
+  });
+}
+
+export type AssignableRole = "attendee" | "organizer" | "admin";
+
+export type AdminUser = {
+  _id: string;
+  email: string;
+  name: string;
+  role: AssignableRole;
+  isEmailVerified: boolean;
+  mfaEnabled: boolean;
+  createdAt: string;
+};
+
+export function getUsers(accessToken: string) {
+  return request<{ users: AdminUser[]; total: number }>("/api/admin/users", {
+    headers: authHeader(accessToken),
+    cache: "no-store",
+  });
+}
+
+export function updateUserRole(accessToken: string, userId: string, role: AssignableRole) {
+  return request<{ id: string; email: string; role: string }>(`/api/admin/users/${userId}/role`, {
+    method: "PATCH",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ role }),
+  });
+}
+
+export type WaitlistEntry = {
+  _id: string;
+  eventId: string;
+  tierId: string;
+  userId: string;
+  createdAt: string;
+};
+
+export function joinWaitlist(accessToken: string, tierId: string) {
+  return request<WaitlistEntry>("/api/waitlist", {
+    method: "POST",
+    headers: authHeader(accessToken),
+    body: JSON.stringify({ tierId }),
+  });
+}
+
+export function getMyWaitlist(accessToken: string) {
+  return request<WaitlistEntry[]>("/api/waitlist/mine", {
+    headers: authHeader(accessToken),
+    cache: "no-store",
+  });
+}
+
+export function leaveWaitlist(accessToken: string, id: string) {
+  return request<void>(`/api/waitlist/${id}`, {
+    method: "DELETE",
+    headers: authHeader(accessToken),
   });
 }

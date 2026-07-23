@@ -13,7 +13,7 @@ export default function AuthStatus() {
 
   if (user) {
     const canManageEvents = user.role === "organizer" || user.role === "admin";
-    const canScanTickets = user.role === "staff" || user.role === "admin";
+    const isAdmin = user.role === "admin";
     return (
       <div className="flex items-center gap-3">
         {canManageEvents && (
@@ -21,12 +21,12 @@ export default function AuthStatus() {
             My events
           </Link>
         )}
-        {canScanTickets && (
-          <Link href="/dashboard/staff-scan" className="text-sm font-medium text-foreground hover:text-brand">
+        {isAdmin && (
+          <Link href="/dashboard/scan-tickets" className="text-sm font-medium text-foreground hover:text-brand">
             Scan tickets
           </Link>
         )}
-        {user.role === "admin" && (
+        {isAdmin && (
           <Link href="/admin" className="text-sm font-medium text-foreground hover:text-brand">
             Admin
           </Link>
@@ -34,8 +34,8 @@ export default function AuthStatus() {
         <Link href="/orders" className="text-sm font-medium text-foreground hover:text-brand">
           My orders
         </Link>
-        <Link href="/mfa-setup" className="text-sm font-medium text-foreground hover:text-brand">
-          Security
+        <Link href="/profile" className="text-sm font-medium text-foreground hover:text-brand">
+          Profile
         </Link>
         <span className="text-sm text-muted">
           {user.email}

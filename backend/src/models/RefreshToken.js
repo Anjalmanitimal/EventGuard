@@ -21,6 +21,10 @@ const refreshTokenSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    userAgent: {
+      type: String,
+      default: '',
+    },
   },
   { timestamps: true }
 );

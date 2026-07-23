@@ -19,6 +19,7 @@ type AuthContextValue = {
   completeMfaLogin: (mfaToken: string, code: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  setSessionToken: (token: string) => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -81,9 +82,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [accessToken, loadUser]);
 
+  const setSessionToken = useCallback(
+    async (token: string) => {
+      setAccessToken(token);
+      await loadUser(token);
+    },
+    [loadUser]
+  );
+
   return (
     <AuthContext.Provider
-      value={{ user, accessToken, loading, login, completeMfaLogin, logout, refreshUser }}
+      value={{ user, accessToken, loading, login, completeMfaLogin, logout, refreshUser, setSessionToken }}
     >
       {children}
     </AuthContext.Provider>
