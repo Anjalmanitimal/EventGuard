@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
-import { CalendarDays, MapPin, Ticket } from "lucide-react";
+import { CalendarDays, MapPin } from "lucide-react";
 import { getEvent } from "@/lib/api";
+import TicketPurchaseForm from "@/components/TicketPurchaseForm";
 
 export default async function EventDetailPage({
   params,
@@ -33,22 +34,8 @@ export default async function EventDetailPage({
 
       <div className="mt-8">
         <h2 className="text-sm font-semibold text-foreground">Ticket tiers</h2>
-        <div className="mt-3 flex flex-col gap-3">
-          {tiers.length === 0 && <p className="text-sm text-muted">No ticket tiers configured yet.</p>}
-          {tiers.map((tier) => (
-            <div
-              key={tier._id}
-              className="flex items-center justify-between rounded-2xl border border-border bg-surface p-4"
-            >
-              <div className="flex items-center gap-2">
-                <Ticket className="size-4 text-brand" aria-hidden="true" />
-                <span className="font-medium text-foreground">{tier.name}</span>
-              </div>
-              <div className="text-sm text-muted">
-                ${tier.price.toFixed(2)} · {tier.quantityAvailable}/{tier.quantityTotal} available
-              </div>
-            </div>
-          ))}
+        <div className="mt-3">
+          <TicketPurchaseForm eventId={event._id} tiers={tiers} />
         </div>
       </div>
     </main>
