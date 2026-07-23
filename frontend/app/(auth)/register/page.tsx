@@ -8,6 +8,7 @@ import Card from "@/components/ui/Card";
 import Input from "@/components/ui/Input";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
+import PasswordStrength, { isPasswordValid } from "@/components/ui/PasswordStrength";
 
 const ROLES: { value: SignupRole; label: string; description: string; icon: typeof User }[] = [
   { value: "attendee", label: "Attendee", description: "Buy tickets to events", icon: User },
@@ -38,10 +39,10 @@ export default function RegisterPage() {
     return (
       <main className="mx-auto flex max-w-sm flex-col items-center px-6 py-20 text-center">
         <MailCheck className="size-10 text-brand" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-semibold text-foreground">Check your verification token</h1>
+        <h1 className="mt-4 text-xl font-semibold text-foreground">Check your inbox</h1>
         <p className="mt-2 text-sm text-muted">
-          Email sending isn&apos;t wired up yet — the verification token was logged to the
-          backend server console.
+          We sent a verification link to {email}. Click it to activate your account, or
+          enter the token manually below.
         </p>
         <Link href="/verify-email" className="mt-6 text-sm font-medium text-brand hover:underline">
           Enter verification token →
@@ -91,19 +92,27 @@ export default function RegisterPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <Input
-            type="password"
-            name="password"
-            label="Password"
-            required
-            minLength={8}
-            placeholder="Min 8 characters"
-            icon={<Lock className="size-4" aria-hidden="true" />}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="flex flex-col gap-2">
+            <Input
+              type="password"
+              name="password"
+              label="Password"
+              required
+              minLength={8}
+              placeholder="Min 8 characters"
+              icon={<Lock className="size-4" aria-hidden="true" />}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <PasswordStrength password={password} />
+          </div>
           {error && <Alert variant="error">{error}</Alert>}
-          <Button type="submit" isLoading={status === "submitting"} className="mt-2 w-full">
+          <Button
+            type="submit"
+            isLoading={status === "submitting"}
+            disabled={Boolean(password) && !isPasswordValid(password)}
+            className="mt-2 w-full"
+          >
             {status === "submitting" ? "Creating account..." : "Register"}
           </Button>
         </form>
