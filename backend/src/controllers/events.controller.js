@@ -1,6 +1,7 @@
 const Event = require('../models/Event');
 const TicketTier = require('../models/TicketTier');
 const { isNonEmptyString, isValidDate } = require('../utils/validators');
+const { recordAudit } = require('../middleware/auditLogger');
 
 const EVENT_STATUSES = ['draft', 'published', 'cancelled'];
 
@@ -50,6 +51,8 @@ async function createEvent(req, res) {
       quantityAvailable: tierInput.quantityTotal,
     });
   }
+
+  await recordAudit(req, 'event.created', { targetId: event._id });
 
   return res.status(201).json({ event, tier: createdTier });
 }
@@ -117,6 +120,12 @@ async function updateEvent(req, res) {
   }
 
   await event.save();
+
+  let action = 'event.updated';
+  if (event.status === 'published') action = 'event.published';
+  if (event.status === 'cancelled') action = 'event.cancelled';
+  await recordAudit(req, action, { targetId: event._id });
+
   return res.json(event);
 }
 
@@ -131,6 +140,7 @@ async function deleteEvent(req, res) {
 
   await TicketTier.deleteMany({ eventId: event._id });
   await event.deleteOne();
+  await recordAudit(req, 'event.deleted', { targetId: event._id });
   return res.status(204).send();
 }
 
