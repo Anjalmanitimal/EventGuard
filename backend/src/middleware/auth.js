@@ -9,7 +9,7 @@ function requireAuth(req, res, next) {
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
     req.user = { id: payload.sub, role: payload.role };
     return next();
   } catch {
@@ -26,7 +26,7 @@ function optionalAuth(req, res, next) {
 
   if (scheme === 'Bearer' && token) {
     try {
-      const payload = jwt.verify(token, process.env.JWT_SECRET);
+      const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
       req.user = { id: payload.sub, role: payload.role };
     } catch {
       // invalid/expired token on an optional-auth route - treat as anonymous

@@ -14,7 +14,7 @@ function signMfaChallengeToken(userId) {
 }
 
 function verifyMfaChallengeToken(token) {
-  const payload = jwt.verify(token, process.env.JWT_SECRET);
+  const payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   if (payload.purpose !== 'mfa') {
     throw new Error('Invalid token purpose');
   }
