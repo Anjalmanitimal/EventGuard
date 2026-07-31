@@ -35,10 +35,8 @@ async function createOrder(req, res) {
     return res.status(404).json({ error: 'Ticket tier not found' });
   }
 
-  // Race-condition-safe stock decrement: the availability check and the
-  // decrement happen as a single atomic operation on one document, so two
-  // concurrent purchases for the last tickets can never both succeed
-  // (fixes the classic TOCTOU overselling bug).
+  // Atomic check-and-decrement on one document - two concurrent buyers
+  // racing for the last ticket can never both succeed (no overselling).
   const reserved = await TicketTier.findOneAndUpdate(
     { _id: tierId, quantityAvailable: { $gte: quantity } },
     { $inc: { quantityAvailable: -quantity } },

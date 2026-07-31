@@ -1,9 +1,7 @@
 const AuditLog = require('../models/AuditLog');
 
-// Records a security-relevant action. Deliberately never throws - a failure
-// to write an audit entry must not break the request it's describing.
-// `userId` defaults to req.user.id (set by requireAuth) but can be
-// overridden for routes like login/register where req.user isn't set yet.
+// Records a security-relevant action (actor, action, target, IP).
+// Never throws - a logging failure must not break the request itself.
 async function recordAudit(req, action, { targetId = null, userId } = {}) {
   try {
     await AuditLog.create({

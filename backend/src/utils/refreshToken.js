@@ -15,15 +15,8 @@ async function issueRefreshToken(userId, userAgent = '') {
   return token;
 }
 
-// Rotates a refresh token: the presented token is consumed and a new one issued.
-// If a token that was already rotated gets presented again, that's a sign of theft
-// (someone replayed a stolen token) - revoke every active token for that user.
-//
-// Also binds the token to the User-Agent it was issued to. A refresh call
-// from a materially different client is treated the same way as replay -
-// this is a coarse signal (browser updates/extensions can change the UA
-// string, so it's not foolproof) but raises the bar for a stolen cookie
-// being used from an attacker's own browser.
+// Rotates the refresh token on each use. A token presented again after
+// being rotated means it was replayed (stolen) - revoke the whole session.
 async function rotateRefreshToken(rawToken, userAgent = '') {
   const tokenHash = hashToken(rawToken);
   const existing = await RefreshToken.findOne({ tokenHash });

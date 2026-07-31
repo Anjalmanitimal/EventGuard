@@ -21,9 +21,8 @@ async function generateTicketsForOrder(order) {
   return Ticket.insertMany(tickets);
 }
 
-// Atomically flips a ticket from valid -> used in a single operation, so two
-// simultaneous scans of the same QR code (e.g. a screenshotted/shared code
-// presented at two gates at once) can't both succeed - only the first wins.
+// Atomically flips valid -> used: two simultaneous scans of a shared/replayed
+// QR code can't both succeed - only the first one wins.
 async function scanTicket(qrToken, scannedByUserId) {
   const ticket = await Ticket.findOneAndUpdate(
     { qrToken, status: 'valid' },
