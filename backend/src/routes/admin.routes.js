@@ -7,6 +7,7 @@ const {
   getStats,
   listUsers,
   updateUserRole,
+  deleteUser,
   listIpRules,
   createIpRule,
   deleteIpRule,
@@ -21,6 +22,7 @@ router.get('/audit-logs', listAuditLogs);
 router.get('/stats', getStats);
 router.get('/users', listUsers);
 router.patch('/users/:id/role', updateUserRole);
+router.delete('/users/:id', deleteUser);
 router.get('/ip-rules', listIpRules);
 router.post('/ip-rules', createIpRule);
 router.delete('/ip-rules/:id', deleteIpRule);

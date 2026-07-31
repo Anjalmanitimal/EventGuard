@@ -325,6 +325,13 @@ export function updateUserRole(accessToken: string, userId: string, role: Assign
   });
 }
 
+export function deleteUser(accessToken: string, userId: string) {
+  return request<void>(`/api/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: authHeader(accessToken),
+  });
+}
+
 export type WaitlistEntry = {
   _id: string;
   eventId: string;

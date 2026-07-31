@@ -2,11 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, CalendarDays, Receipt, Ticket, DollarSign, AlertTriangle, Radio } from "lucide-react";
+import { Users, CalendarDays, Receipt, Ticket, DollarSign, AlertTriangle, Radio, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth-context";
 import * as api from "@/lib/api";
 import type { AdminStats, AuditLogEntry, AdminUser, AssignableRole } from "@/lib/api";
-import Card from "@/components/ui/Card";
 import Button from "@/components/ui/Button";
 import Alert from "@/components/ui/Alert";
 
@@ -47,6 +46,7 @@ export default function AdminDashboardPage() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [usersError, setUsersError] = useState<string | null>(null);
   const [savingUserId, setSavingUserId] = useState<string | null>(null);
+  const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
 
   const isAdmin = Boolean(user && user.role === "admin");
 
@@ -69,6 +69,23 @@ export default function AdminDashboardPage() {
       setUsersError(err instanceof Error ? err.message : "Could not change role");
     } finally {
       setSavingUserId(null);
+    }
+  }
+
+  async function handleDeleteUser(userId: string, email: string) {
+    if (!accessToken) return;
+    const confirmed = window.confirm(`Permanently delete ${email}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingUserId(userId);
+    setUsersError(null);
+    try {
+      await api.deleteUser(accessToken, userId);
+      setUsers((prev) => prev?.filter((u) => u._id !== userId) ?? null);
+    } catch (err) {
+      setUsersError(err instanceof Error ? err.message : "Could not delete user");
+    } finally {
+      setDeletingUserId(null);
     }
   }
 
@@ -171,14 +188,26 @@ export default function AdminDashboardPage() {
       )}
 
       <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-5">
-        {STAT_CARDS.map(({ key, label, icon: Icon, format }) => (
-          <Card key={key} className="flex flex-col gap-1 p-4">
-            <Icon className="size-4 text-brand" aria-hidden="true" />
-            <span className="text-lg font-semibold text-foreground">
+        {STAT_CARDS.map(({ key, label, icon: Icon, format }, i) => (
+          <div
+            key={key}
+            className="relative flex flex-col gap-1 overflow-hidden rounded-2xl p-4 text-white shadow-md"
+            style={{
+              background: `linear-gradient(150deg, color-mix(in srgb, var(--brand) ${
+                92 - i * 6
+              }%, black) 0%, color-mix(in srgb, var(--brand) ${70 - i * 6}%, black) 100%)`,
+            }}
+          >
+            <Icon
+              className="absolute -right-3 -top-3 size-16 opacity-15"
+              aria-hidden="true"
+            />
+            <Icon className="relative size-4 opacity-90" aria-hidden="true" />
+            <span className="relative text-2xl font-bold tracking-tight">
               {stats ? (format ? format(stats[key]) : stats[key]) : "..."}
             </span>
-            <span className="text-xs text-muted">{label}</span>
-          </Card>
+            <span className="relative text-xs font-medium text-white/75">{label}</span>
+          </div>
         ))}
       </div>
 
@@ -196,12 +225,13 @@ export default function AdminDashboardPage() {
               <th className="px-4 py-3 font-medium">Verified</th>
               <th className="px-4 py-3 font-medium">MFA</th>
               <th className="px-4 py-3 font-medium">Role</th>
+              <th className="px-4 py-3 font-medium"></th>
             </tr>
           </thead>
           <tbody>
             {users === null && (
               <tr>
-                <td className="px-4 py-3 text-muted" colSpan={4}>
+                <td className="px-4 py-3 text-muted" colSpan={5}>
                   Loading...
                 </td>
               </tr>
@@ -229,6 +259,17 @@ export default function AdminDashboardPage() {
                         </option>
                       ))}
                     </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      disabled={isSelf || deletingUserId === u._id}
+                      onClick={() => handleDeleteUser(u._id, u.email)}
+                      title="Delete user"
+                      className="rounded-control p-1.5 text-muted transition-colors hover:bg-danger-bg hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted"
+                    >
+                      <Trash2 className="size-4" aria-hidden="true" />
+                    </button>
                   </td>
                 </tr>
               );

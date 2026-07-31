@@ -7,6 +7,7 @@ const IpRule = require('../models/IpRule');
 const { recordAudit } = require('../middleware/auditLogger');
 const { isNonEmptyString } = require('../utils/validators');
 const { checkAndSendReminders } = require('../services/reminder.service');
+const { revokeAllRefreshTokensForUser } = require('../utils/refreshToken');
 
 async function listAuditLogs(req, res) {
   const limit = Math.min(Number(req.query.limit) || 50, 200);
@@ -85,6 +86,27 @@ async function updateUserRole(req, res) {
   return res.json({ id: user._id, email: user.email, role: user.role });
 }
 
+async function deleteUser(req, res) {
+  if (req.params.id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot delete your own account' });
+  }
+
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+
+  // Kill any active sessions before the account disappears, and audit the
+  // deletion using the id/email that are about to stop existing.
+  await revokeAllRefreshTokensForUser(user._id);
+  await recordAudit(req, 'user.deleted', { targetId: user._id });
+  console.log(`[admin] ${req.user.id} deleted user ${user.email} (${user._id})`);
+
+  await user.deleteOne();
+
+  return res.status(204).send();
+}
+
 const IP_RE = /^(\d{1,3}\.){3}\d{1,3}$|^[a-fA-F0-9:]+$/;
 
 async function listIpRules(req, res) {
@@ -144,6 +166,7 @@ module.exports = {
   getStats,
   listUsers,
   updateUserRole,
+  deleteUser,
   listIpRules,
   createIpRule,
   deleteIpRule,
