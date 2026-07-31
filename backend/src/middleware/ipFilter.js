@@ -30,8 +30,10 @@ async function ipFilter(req, res, next) {
 
     return next();
   } catch (err) {
+    // Fail CLOSED: if the rule lookup itself errors, reject rather than
+    // silently letting a blocked IP through during a DB outage.
     console.error('IP filter check failed:', err);
-    return next();
+    return res.status(503).json({ error: 'Access control temporarily unavailable, please retry' });
   }
 }
 
