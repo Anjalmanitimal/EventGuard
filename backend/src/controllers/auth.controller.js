@@ -37,6 +37,8 @@ async function issueSession(req, res, user) {
 // admin is never self-assignable - only granted by an existing admin later.
 const SELF_SIGNUP_ROLES = ['attendee', 'organizer'];
 
+const EMAIL_VERIFICATION_TTL_MS = 24 * 60 * 60 * 1000;
+
 async function register(req, res) {
   const { email, password, role } = req.body;
 
@@ -59,7 +61,13 @@ async function register(req, res) {
   const normalizedEmail = email.toLowerCase();
   const existing = await User.findOne({ email: normalizedEmail });
   if (existing) {
-    return res.status(409).json({ error: 'An account with this email already exists' });
+    // Same response shape/status as a fresh signup, and no new record or
+    // email is created - an existing account must not be distinguishable
+    // from a brand-new one via this endpoint (prevents email enumeration).
+    await recordAudit(req, 'user.register_duplicate_attempt');
+    return res.status(201).json({
+      message: 'If this email is new, a verification link has been sent to it.',
+    });
   }
 
   const passwordHash = await hashPassword(password);
@@ -68,12 +76,14 @@ async function register(req, res) {
   // random (crypto.randomInt, not Math.random), and rate-limited on the
   // verify endpoint, so brute-forcing the 1-in-a-million space isn't practical.
   const emailVerificationToken = crypto.randomInt(100000, 1000000).toString();
+  const emailVerificationExpires = new Date(Date.now() + EMAIL_VERIFICATION_TTL_MS);
 
   const user = await User.create({
     email: normalizedEmail,
     passwordHash,
     passwordChangedAt: new Date(),
     emailVerificationToken,
+    emailVerificationExpires,
     role: role || 'attendee',
   });
 
@@ -81,17 +91,18 @@ async function register(req, res) {
     await sendVerificationEmail(user.email, emailVerificationToken);
   } catch (err) {
     // Don't fail registration just because the email provider hiccuped -
-    // the token still works if entered manually. Log it as a fallback.
+    // the token still works if entered manually. Never log the token itself:
+    // it's a live credential and logs often end up in less-trusted places
+    // (aggregators, error trackers) than the mailbox it was meant for.
     console.error('Failed to send verification email:', err.message);
-    console.log(`[email-verify] token for ${user.email}: ${emailVerificationToken}`);
   }
 
   await recordAudit(req, 'user.register', { userId: user._id, targetId: user._id });
 
+  // Identical shape/status to the "email already exists" branch above -
+  // an attacker probing this endpoint cannot tell new vs. existing accounts apart.
   return res.status(201).json({
-    id: user._id,
-    email: user.email,
-    role: user.role,
+    message: 'If this email is new, a verification link has been sent to it.',
   });
 }
 
@@ -102,13 +113,24 @@ async function verifyEmail(req, res) {
     return res.status(400).json({ error: 'Verification token is required' });
   }
 
-  const user = await User.findOne({ emailVerificationToken: token }).select('+emailVerificationToken');
+  const user = await User.findOne({ emailVerificationToken: token }).select(
+    '+emailVerificationToken +emailVerificationExpires'
+  );
   if (!user) {
+    return res.status(400).json({ error: 'Invalid or expired verification token' });
+  }
+
+  // Reject if the 24h TTL has passed - a leaked/stale link must not work forever.
+  if (!user.emailVerificationExpires || user.emailVerificationExpires < new Date()) {
+    user.emailVerificationToken = undefined;
+    user.emailVerificationExpires = undefined;
+    await user.save();
     return res.status(400).json({ error: 'Invalid or expired verification token' });
   }
 
   user.isEmailVerified = true;
   user.emailVerificationToken = undefined;
+  user.emailVerificationExpires = undefined;
   await user.save();
 
   return res.json({ message: 'Email verified' });
@@ -143,6 +165,8 @@ async function login(req, res) {
   if (!valid) {
     user.failedLoginAttempts += 1;
 
+    // 5th consecutive failure locks the account for 15 minutes, even
+    // against the correct password - blunts credential-stuffing/brute force.
     if (user.failedLoginAttempts >= MAX_FAILED_LOGIN_ATTEMPTS) {
       user.lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
       user.failedLoginAttempts = 0;
@@ -421,6 +445,7 @@ async function changePassword(req, res) {
     return res.status(401).json({ error: 'Current password is incorrect' });
   }
 
+  // Block reuse of the current password or any of the last 5 (history).
   const priorHashes = [user.passwordHash, ...user.passwordHistory];
   for (const priorHash of priorHashes) {
     if (await comparePassword(newPassword, priorHash)) {
