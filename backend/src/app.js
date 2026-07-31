@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
 const morgan = require('morgan');
 const cookieParser = require('cookie-parser');
 const sanitizeBody = require('./middleware/sanitize');
@@ -15,6 +16,8 @@ const waitlistRoutes = require('./routes/waitlist.routes');
 
 const app = express();
 
+// Baseline security headers: CSP, HSTS, X-Frame-Options, no X-Powered-By, etc.
+app.use(helmet());
 app.use(cors({ origin: process.env.CORS_ORIGIN || 'http://localhost:3000', credentials: true }));
 app.use(ipFilter);
 app.use(express.json());
